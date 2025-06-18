@@ -356,6 +356,14 @@
                 grid-template-columns: 1fr;
             }
         }
+        .paid-badge {
+    color: green;
+    font-weight: bold;
+    padding: 2px 8px;
+    border-radius: 8px;
+    background: #e6ffe6;
+    margin-left: 10px;
+}
     </style>
 </head>
 <body>
@@ -605,12 +613,14 @@
             }
 
             const transaction = {
-                id: Date.now(),
-                name: name,
-                amount: amount,
-                type: type,
-                date: new Date()
-            };
+    id: Date.now(),
+    name: name,
+    amount: amount,
+    type: type,
+    date: new Date(),
+    paidAmount: type === 'borrowed' ? 0 : undefined, // Only for borrowed
+    paid: type === 'borrowed' ? false : undefined
+};
 
             currentPlace.transactions.push(transaction);
             console.log('Transaction added:', transaction); // Debug log
@@ -628,6 +638,38 @@
             typeSelect.value = '';
         }
 
+        function makePayment(transactionId) {
+    // Find the transaction
+    const tx = currentPlace.transactions.find(t => t.id === transactionId);
+    if (!tx || tx.type !== 'borrowed') return;
+    if (tx.paid) {
+        showNotification('Transaction is already fully paid!');
+        return;
+    }
+    const remaining = tx.amount - (tx.paidAmount || 0);
+    const payment = parseFloat(prompt('Enter payment amount (Remaining: ₱' + remaining.toLocaleString() + '):'));
+    if (isNaN(payment) || payment <= 0) {
+        showNotification('Invalid payment amount!');
+        return;
+    }
+    if (payment > remaining) {
+        showNotification('Payment exceeds remaining borrowed amount!');
+        return;
+    }
+    tx.paidAmount = (tx.paidAmount || 0) + payment;
+    if (tx.paidAmount === tx.amount) {
+        tx.paid = true;
+        showNotification('Borrowed transaction fully paid! 🎉');
+    } else {
+        showNotification(`Partial payment made. Remaining: ₱${(tx.amount - tx.paidAmount).toLocaleString()}`);
+    }
+    updateTransactionsList();
+    updateStats();
+    updateCharts();
+    updatePlaceChart();
+}
+window.makePayment = makePayment; // Make globally accessible
+        
         // Legacy functions (keeping for compatibility)
         function addPlace(e) {
             if (e) e.preventDefault();
@@ -744,23 +786,38 @@
 
             container.innerHTML = currentPlace.transactions
                 .sort((a, b) => new Date(b.date) - new Date(a.date))
-                .map(transaction => `
-                    <div class="transaction-item">
-                        <div class="transaction-header">
-                            <span class="transaction-name">${transaction.name}</span>
-                            <span class="transaction-amount">₱${transaction.amount.toLocaleString()}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span class="transaction-type ${transaction.type}">${transaction.type.toUpperCase()}</span>
-                            <span style="color: #999; font-size: 0.9rem;">
-                                ${new Date(transaction.date).toLocaleDateString()}
-                            </span>
-                        </div>
-                    </div>
-                `).join('');
-                
-            console.log('Transactions list updated with', currentPlace.transactions.length, 'transactions'); // Debug log
+               container.innerHTML = currentPlace.transactions
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .map(transaction => {
+        let paymentControls = '';
+        if (transaction.type === 'borrowed') {
+            const paidAmount = transaction.paidAmount || 0;
+            const remaining = transaction.amount - paidAmount;
+            if (transaction.paid) {
+                paymentControls = '<span class="paid-badge" style="color: green; font-weight: bold;">PAID</span>';
+            } else {
+                paymentControls = `
+                    <button onclick="makePayment(${transaction.id})" class="btn btn-secondary btn-sm" style="margin-left:10px;">Make Payment</button>
+                    <span style="color:#EF4444;font-size:0.9rem;margin-left:8px;">Remaining: ₱${remaining.toLocaleString()}</span>
+                `;
+            }
         }
+        return `
+            <div class="transaction-item">
+                <div class="transaction-header">
+                    <span class="transaction-name">${transaction.name}</span>
+                    <span class="transaction-amount">₱${transaction.amount.toLocaleString()}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span class="transaction-type ${transaction.type}">${transaction.type.toUpperCase()}</span>
+                    <span style="color: #999; font-size: 0.9rem;">
+                        ${new Date(transaction.date).toLocaleDateString()}
+                    </span>
+                    ${paymentControls}
+                </div>
+            </div>
+        `;
+    }).join('');
 
         function updateStats() {
             const totalPlaces = places.length;
