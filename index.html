@@ -256,34 +256,74 @@
         }
 
         .notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: rgba(139, 69, 19, 0.95);
-            color: white;
-            padding: 15px 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-            transform: translateX(400px);
-            transition: transform 0.5s ease;
-            z-index: 1000;
-            max-width: 300px;
-        }
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(139, 69, 19, 0.95);
+    color: white;
+    padding: 15px 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    transform: translateX(400px);
+    transition: transform 0.5s ease;
+    z-index: 1000;
+    max-width: 300px;
+    word-wrap: break-word;
+    backdrop-filter: blur(10px);
+}
 
-        .notification.show {
-            transform: translateX(0);
-        }
+.notification.show {
+    transform: translateX(0);
+}
 
-        .notification-close {
-            position: absolute;
-            top: 5px;
-            right: 10px;
-            background: none;
-            border: none;
-            color: white;
-            font-size: 1.2rem;
-            cursor: pointer;
-        }
+/* Responsive adjustments for notifications */
+@media (max-width: 768px) {
+    .notification {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+        max-width: none;
+        width: auto;
+        transform: translateY(-100px);
+        padding: 12px 16px;
+        font-size: 0.9rem;
+        .notification {
+        right: 10px;
+        left: 10px;
+        max-width: none;
+    }
+    
+    .notification.show {
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 480px) {
+    .notification {
+        top: 10px;
+        right: 5px;
+        left: 5px;
+        padding: 10px 12px;
+        font-size: 0.85rem;
+        border-radius: 8px;
+    }
+    
+    .notification-close {
+        top: 3px;
+        right: 8px;
+        font-size: 1rem;
+    }
+}
+
+/* For very small screens */
+@media (max-width: 320px) {
+    .notification {
+        padding: 8px 10px;
+        font-size: 0.8rem;
+        max-height: 80px;
+        overflow-y: auto;
+    }
+}
 
         .back-btn {
             margin-bottom: 15px;
@@ -356,13 +396,15 @@
                 grid-template-columns: 1fr;
             }
         }
-        .paid-badge {
-    color: green;
-    font-weight: bold;
-    padding: 2px 8px;
-    border-radius: 8px;
-    background: #e6ffe6;
-    margin-left: 10px;
+        .paid {
+    background: #10B981 !important;
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+
+.transaction-item.paid-transaction {
+    opacity: 0.8;
+    background: rgba(16, 185, 129, 0.1);
 }
     </style>
 </head>
@@ -406,6 +448,10 @@
                             <div class="stat-value" id="net-profit">₱0</div>
                             <div class="stat-label">Net Profit</div>
                         </div>
+                        <div class="stat-card">
+    <div class="stat-value" id="total-equity">₱0</div>
+    <div class="stat-label">Total Equity</div>
+</div>
                     </div>
                 </div>
 
@@ -445,7 +491,7 @@
                     <canvas id="revenue-chart"></canvas>
                 </div>
                 <div class="chart-container">
-                    <h3 style="color: #8B4513; margin-bottom: 15px;">📈 Performance Trend</h3>
+                    <h3 style="color: #8B4513; margin-bottom: 15px;">📈 Actual Performance Trend</h3>
                     <canvas id="performance-chart"></canvas>
                 </div>
             </div>
@@ -477,6 +523,10 @@
                                 <option value="borrowed">Borrowed</option>
                             </select>
                         </div>
+                        <div class="form-group">
+    <label for="transaction-equity">Expected Equity/Profit (₱)</label>
+    <input type="number" id="transaction-equity" placeholder="0.00" step="0.01" required>
+</div>
                         <button type="button" class="btn" onclick="addTransactionHandler()">Add Transaction</button>
                     </form>
                 </div>
@@ -517,20 +567,26 @@
         // Initialize Charts
         let revenueChart, performanceChart, placeChart;
 
-        // Initialize app when DOM is loaded
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, initializing app...'); // Debug log
-            
-            // Initialize the app
-            updateStats();
-            updateCharts();
-            updatePlacesTable();
-            
-            // Welcome message
-            setTimeout(() => {
-                showNotification('Welcome to Sibuyas for All! 🧅 Start by adding your first business location.');
-            }, 1000);
-        });
+    console.log('DOM loaded, initializing app...'); // Debug log
+    
+    // Load saved data first
+    loadData();
+    
+    // Initialize the app
+    updateStats();
+    updateCharts();
+    updatePlacesTable();
+    
+    // Welcome message
+    setTimeout(() => {
+        if (places.length === 0) {
+            showNotification('Welcome to Sibuyas for All! 🧅 Start by adding your first business location.');
+        } else {
+            showNotification('Welcome back! Your data has been restored. 🧅');
+        }
+    }, 1000);
+});
 
         // Handler functions that can be called from HTML
         function addPlaceHandler() {
@@ -570,106 +626,116 @@
             updatePlacesTable();
             updateStats();
             updateCharts();
-            
+            saveData();
             // Reset form
             placeNameInput.value = '';
         }
 
-        function addTransactionHandler() {
-            console.log('Add transaction button clicked'); // Debug log
-            
-            if (!currentPlace) {
-                showNotification('Error: No place selected! 🚫');
-                return;
-            }
+        // Data persistence functions
+function saveData() {
+    try {
+        localStorage.setItem('sibuyasPlaces', JSON.stringify(places));
+        localStorage.setItem('sibuyasCurrentPlace', currentPlace ? JSON.stringify(currentPlace) : null);
+    } catch (error) {
+        console.error('Error saving data:', error);
+    }
+}
 
-            const nameInput = document.getElementById('transaction-name');
-            const amountInput = document.getElementById('transaction-amount');
-            const typeSelect = document.getElementById('transaction-type');
-            
-            if (!nameInput || !amountInput || !typeSelect) {
-                console.error('Transaction form inputs not found');
-                return;
-            }
-            
-            const name = nameInput.value.trim();
-            const amount = parseFloat(amountInput.value);
-            const type = typeSelect.value;
-
-            // Validation
-            if (!name) {
-                showNotification('Please enter transaction name! 📝');
-                return;
-            }
-            
-            if (!amount || amount <= 0) {
-                showNotification('Please enter a valid amount! 💰');
-                return;
-            }
-            
-            if (!type) {
-                showNotification('Please select payment type! 💳');
-                return;
-            }
-
-            const transaction = {
-    id: Date.now(),
-    name: name,
-    amount: amount,
-    type: type,
-    date: new Date(),
-    paidAmount: type === 'borrowed' ? 0 : undefined, // Only for borrowed
-    paid: type === 'borrowed' ? false : undefined
-};
-
-            currentPlace.transactions.push(transaction);
-            console.log('Transaction added:', transaction); // Debug log
-            console.log('Current place transactions:', currentPlace.transactions.length); // Debug log
-            
-            showNotification(`Transaction "${name}" added! 💰`);
-            updateTransactionsList();
-            updateStats();
-            updateCharts();
-            updatePlaceChart();
-            
-            // Reset form
-            nameInput.value = '';
-            amountInput.value = '';
-            typeSelect.value = '';
+function loadData() {
+    try {
+        const savedPlaces = localStorage.getItem('sibuyasPlaces');
+        const savedCurrentPlace = localStorage.getItem('sibuyasCurrentPlace');
+        
+        if (savedPlaces) {
+            places = JSON.parse(savedPlaces);
         }
+        if (savedCurrentPlace && savedCurrentPlace !== 'null') {
+            currentPlace = JSON.parse(savedCurrentPlace);
+        }
+    } catch (error) {
+        console.error('Error loading data:', error);
+        places = [];
+        currentPlace = null;
+    }
+}
 
-        function makePayment(transactionId) {
-    // Find the transaction
-    const tx = currentPlace.transactions.find(t => t.id === transactionId);
-    if (!tx || tx.type !== 'borrowed') return;
-    if (tx.paid) {
-        showNotification('Transaction is already fully paid!');
+        function addTransactionHandler() {
+    console.log('Add transaction button clicked'); // Debug log
+    
+    if (!currentPlace) {
+        showNotification('Error: No place selected! 🚫');
         return;
     }
-    const remaining = tx.amount - (tx.paidAmount || 0);
-    const payment = parseFloat(prompt('Enter payment amount (Remaining: ₱' + remaining.toLocaleString() + '):'));
-    if (isNaN(payment) || payment <= 0) {
-        showNotification('Invalid payment amount!');
+
+    const nameInput = document.getElementById('transaction-name');
+    const amountInput = document.getElementById('transaction-amount');
+    const typeSelect = document.getElementById('transaction-type');
+    const equityInput = document.getElementById('transaction-equity');
+    
+    if (!nameInput || !amountInput || !typeSelect || !equityInput) {
+        console.error('Transaction form inputs not found');
         return;
     }
-    if (payment > remaining) {
-        showNotification('Payment exceeds remaining borrowed amount!');
+    
+    const name = nameInput.value.trim();
+    const amount = parseFloat(amountInput.value);
+    const type = typeSelect.value;
+    const equity = parseFloat(equityInput.value);
+
+    // Validation
+    if (!name) {
+        showNotification('Please enter transaction name! 📝');
         return;
     }
-    tx.paidAmount = (tx.paidAmount || 0) + payment;
-    if (tx.paidAmount === tx.amount) {
-        tx.paid = true;
-        showNotification('Borrowed transaction fully paid! 🎉');
-    } else {
-        showNotification(`Partial payment made. Remaining: ₱${(tx.amount - tx.paidAmount).toLocaleString()}`);
+    
+    if (!amount || amount <= 0) {
+        showNotification('Please enter a valid amount! 💰');
+        return;
     }
+    
+    if (!type) {
+        showNotification('Please select payment type! 💳');
+        return;
+    }
+
+    if (!equity || equity < 0) {
+        showNotification('Please enter a valid equity amount! 💹');
+        return;
+    }
+
+    // Show confirmation with equity details
+    if (!confirm(`Confirm Transaction:\n\nName: ${name}\nAmount: ₱${amount.toLocaleString()}\nType: ${type.toUpperCase()}\nExpected Equity: ₱${equity.toLocaleString()}\n\nProceed?`)) {
+        return;
+    }
+
+    const transaction = {
+        id: Date.now(),
+        name: name,
+        amount: amount,
+        type: type,
+        equity: equity,
+        date: new Date()
+    };
+
+    currentPlace.transactions.push(transaction);
+    console.log('Transaction added:', transaction); // Debug log
+    
+    // Save data automatically
+    saveData();
+    
+    showNotification(`Transaction "${name}" added! 💰\nExpected Equity: ₱${equity.toLocaleString()} 💹`);
     updateTransactionsList();
     updateStats();
     updateCharts();
     updatePlaceChart();
-}
-window.makePayment = makePayment; // Make globally accessible
-        
+    
+    // Reset form
+    nameInput.value = '';
+    amountInput.value = '';
+    typeSelect.value = '';
+    equityInput.value = '';
+}  
+
         // Legacy functions (keeping for compatibility)
         function addPlace(e) {
             if (e) e.preventDefault();
@@ -784,69 +850,67 @@ window.makePayment = makePayment; // Make globally accessible
                 return;
             }
 
-            container.innerHTML = currentPlace.transactions
-                .sort((a, b) => new Date(b.date) - new Date(a.date))
-               container.innerHTML = currentPlace.transactions
+           container.innerHTML = currentPlace.transactions
     .sort((a, b) => new Date(b.date) - new Date(a.date))
-    .map(transaction => {
-        let paymentControls = '';
-        if (transaction.type === 'borrowed') {
-            const paidAmount = transaction.paidAmount || 0;
-            const remaining = transaction.amount - paidAmount;
-            if (transaction.paid) {
-                paymentControls = '<span class="paid-badge" style="color: green; font-weight: bold;">PAID</span>';
-            } else {
-                paymentControls = `
-                    <button onclick="makePayment(${transaction.id})" class="btn btn-secondary btn-sm" style="margin-left:10px;">Make Payment</button>
-                    <span style="color:#EF4444;font-size:0.9rem;margin-left:8px;">Remaining: ₱${remaining.toLocaleString()}</span>
-                `;
-            }
-        }
-        return `
-            <div class="transaction-item">
-                <div class="transaction-header">
-                    <span class="transaction-name">${transaction.name}</span>
-                    <span class="transaction-amount">₱${transaction.amount.toLocaleString()}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span class="transaction-type ${transaction.type}">${transaction.type.toUpperCase()}</span>
-                    <span style="color: #999; font-size: 0.9rem;">
-                        ${new Date(transaction.date).toLocaleDateString()}
-                    </span>
-                    ${paymentControls}
-                </div>
+    .map(transaction => `
+        <div class="transaction-item">
+            <div class="transaction-header">
+                <span class="transaction-name">${transaction.name}</span>
+                <span class="transaction-amount">₱${transaction.amount.toLocaleString()}</span>
             </div>
-        `;
-    }).join('');
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                <span class="transaction-type ${transaction.type} ${transaction.paid ? 'paid' : ''}">${transaction.type.toUpperCase()}${transaction.paid ? ' - PAID' : ''}</span>
+                <span style="background: #22C55E; color: white; padding: 4px 8px; border-radius: 10px; font-size: 0.8rem;">
+                    Equity: ₱${(transaction.equity || 0).toLocaleString()}
+                </span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    ${transaction.type === 'borrowed' && !transaction.paid ? 
+                        `<button class="btn" style="padding: 4px 8px; font-size: 0.8rem;" onclick="markAsPaid(${transaction.id})">Mark as Paid</button>` : 
+                        ''}
+                </div>
+                <span style="color: #999; font-size: 0.9rem;">
+                    ${new Date(transaction.date).toLocaleDateString()}
+                </span>
+            </div>
+        </div>
+    `).join('');
+                
+            console.log('Transactions list updated with', currentPlace.transactions.length, 'transactions'); // Debug log
+        }
 
         function updateStats() {
-            const totalPlaces = places.length;
-            const allTransactions = places.flatMap(p => p.transactions);
-            const totalRevenue = allTransactions
-                .filter(t => t.type === 'cash')
-                .reduce((sum, t) => sum + t.amount, 0);
-            const totalBorrowed = allTransactions
-                .filter(t => t.type === 'borrowed')
-                .reduce((sum, t) => sum + t.amount, 0);
-            const netProfit = totalRevenue - totalBorrowed;
+    const totalPlaces = places.length;
+    const allTransactions = places.flatMap(p => p.transactions);
+    const totalRevenue = allTransactions
+        .filter(t => t.type === 'cash')
+        .reduce((sum, t) => sum + t.amount, 0);
+    const totalBorrowed = allTransactions
+        .filter(t => t.type === 'borrowed' && !t.paid)
+        .reduce((sum, t) => sum + t.amount, 0);
+    const totalEquity = allTransactions
+        .reduce((sum, t) => sum + (t.equity || 0), 0);
+    const netProfit = totalRevenue - totalBorrowed;
 
-            // Update DOM elements safely
-            const elements = {
-                'total-places': totalPlaces,
-                'total-revenue': `₱${totalRevenue.toLocaleString()}`,
-                'total-borrowed': `₱${totalBorrowed.toLocaleString()}`,
-                'net-profit': `₱${netProfit.toLocaleString()}`
-            };
+    // Update DOM elements safely
+    const elements = {
+        'total-places': totalPlaces,
+        'total-revenue': `₱${totalRevenue.toLocaleString()}`,
+        'total-borrowed': `₱${totalBorrowed.toLocaleString()}`,
+        'total-equity': `₱${totalEquity.toLocaleString()}`,
+        'net-profit': `₱${netProfit.toLocaleString()}`
+    };
 
-            Object.entries(elements).forEach(([id, value]) => {
-                const element = document.getElementById(id);
-                if (element) {
-                    element.textContent = value;
-                }
-            });
-            
-            console.log('Stats updated:', { totalPlaces, totalRevenue, totalBorrowed, netProfit }); // Debug log
+    Object.entries(elements).forEach(([id, value]) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = value;
         }
+    });
+    
+    console.log('Stats updated:', { totalPlaces, totalRevenue, totalBorrowed, totalEquity, netProfit }); // Debug log
+}
 
         function updateCharts() {
             updateRevenueChart();
@@ -865,9 +929,8 @@ window.makePayment = makePayment; // Make globally accessible
                 .filter(t => t.type === 'cash')
                 .reduce((sum, t) => sum + t.amount, 0);
             const borrowed = allTransactions
-                .filter(t => t.type === 'borrowed')
-                .reduce((sum, t) => sum + t.amount, 0);
-
+    .filter(t => t.type === 'borrowed' && !t.paid)
+    .reduce((sum, t) => sum + t.amount, 0);
             revenueChart = new Chart(ctx, {
                 type: 'doughnut',
                 data: {
@@ -890,87 +953,235 @@ window.makePayment = makePayment; // Make globally accessible
             });
         }
 
+        function getDailyLabels(startDate, endDate) {
+    const labels = [];
+    const current = new Date(startDate);
+    
+    while (current <= endDate) {
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        labels.push({
+            label: dayNames[current.getDay()],
+            endDate: new Date(current)
+        });
+        current.setDate(current.getDate() + 1);
+    }
+    
+    return labels;
+}
+
+function getWeeklyLabels(startDate, endDate) {
+    const labels = [];
+    const current = new Date(startDate);
+    let weekNumber = 1;
+    
+    while (current <= endDate) {
+        const weekEnd = new Date(current);
+        weekEnd.setDate(current.getDate() + 6);
+        
+        if (weekEnd > endDate) {
+            weekEnd.setTime(endDate.getTime());
+        }
+        
+        labels.push({
+            label: `Week ${weekNumber}`,
+            endDate: new Date(weekEnd)
+        });
+        
+        current.setDate(current.getDate() + 7);
+        weekNumber++;
+    }
+    
+    return labels;
+}
+
+function getMonthlyLabels(startDate, endDate) {
+    const labels = [];
+    const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    while (current <= endDate) {
+        const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
+        
+        if (monthEnd > endDate) {
+            monthEnd.setTime(endDate.getTime());
+        }
+        
+        labels.push({
+            label: monthNames[current.getMonth()],
+            endDate: new Date(monthEnd)
+        });
+        
+        current.setMonth(current.getMonth() + 1);
+    }
+    
+    return labels;
+}
+
         function updatePerformanceChart() {
-            const ctx = document.getElementById('performance-chart').getContext('2d');
-            
-            if (performanceChart) {
-                performanceChart.destroy();
-            }
+    const ctx = document.getElementById('performance-chart').getContext('2d');
+    
+    if (performanceChart) {
+        performanceChart.destroy();
+    }
 
-            // Generate sample data based on current period
-            const labels = [];
-            const revenueData = [];
-            const borrowedData = [];
-
-            if (currentPeriod === 'week') {
-                const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-                days.forEach((day, index) => {
-                    labels.push(day);
-                    // Simulate data based on actual transactions
-                    const dayRevenue = Math.random() * 5000 + (places.length * 1000);
-                    const dayBorrowed = Math.random() * 2000 + (places.length * 300);
-                    revenueData.push(dayRevenue);
-                    borrowedData.push(dayBorrowed);
-                });
-            } else if (currentPeriod === 'month') {
-                for (let i = 1; i <= 4; i++) {
-                    labels.push(`Week ${i}`);
-                    const weekRevenue = Math.random() * 20000 + (places.length * 5000);
-                    const weekBorrowed = Math.random() * 8000 + (places.length * 1500);
-                    revenueData.push(weekRevenue);
-                    borrowedData.push(weekBorrowed);
-                }
-            } else {
-                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                months.forEach(month => {
-                    labels.push(month);
-                    const monthRevenue = Math.random() * 80000 + (places.length * 20000);
-                    const monthBorrowed = Math.random() * 30000 + (places.length * 6000);
-                    revenueData.push(monthRevenue);
-                    borrowedData.push(monthBorrowed);
-                });
-            }
-
-            performanceChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Revenue',
-                        data: revenueData,
-                        borderColor: '#22C55E',
-                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                        tension: 0.4,
-                        fill: true
-                    }, {
-                        label: 'Borrowed',
-                        data: borrowedData,
-                        borderColor: '#EF4444',
-                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                        tension: 0.4,
-                        fill: true
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                callback: function(value) {
-                                    return '₱' + value.toLocaleString();
-                                }
-                            }
-                        }
+    // Get all transactions and sort by date
+    const allTransactions = places.flatMap(p => p.transactions).sort((a, b) => new Date(a.date) - new Date(b.date));
+    
+    if (allTransactions.length === 0) {
+        // Show empty chart with message
+        performanceChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: ['No Data'],
+                datasets: [{
+                    label: 'Revenue',
+                    data: [0],
+                    borderColor: '#22C55E',
+                    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                    tension: 0.4
+                }, {
+                    label: 'Outstanding Borrowed',
+                    data: [0],
+                    borderColor: '#EF4444',
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'top'
                     },
-                    plugins: {
-                        legend: {
-                            position: 'top'
+                    title: {
+                        display: true,
+                        text: 'Add transactions to see performance trend'
+                    }
+                }
+            }
+        });
+        return;
+    }
+
+    const labels = [];
+    const revenueData = [];
+    const borrowedData = [];
+    
+    // Get date range
+    const firstDate = new Date(allTransactions[0].date);
+    const lastDate = new Date(allTransactions[allTransactions.length - 1].date);
+    const today = new Date();
+    
+    // Determine date range based on period and actual data
+    let startDate, endDate, dateLabels;
+    
+    if (currentPeriod === 'week') {
+        // Show last 7 days or since first transaction
+        endDate = new Date(today);
+        startDate = new Date(today);
+        startDate.setDate(today.getDate() - 6);
+        
+        // If first transaction is more recent, start from there
+        if (firstDate > startDate) {
+            startDate = new Date(firstDate);
+        }
+        
+        dateLabels = getDailyLabels(startDate, endDate);
+    } else if (currentPeriod === 'month') {
+        // Show last 4 weeks or since first transaction
+        endDate = new Date(today);
+        startDate = new Date(today);
+        startDate.setDate(today.getDate() - 27); // 4 weeks
+        
+        if (firstDate > startDate) {
+            startDate = new Date(firstDate);
+        }
+        
+        dateLabels = getWeeklyLabels(startDate, endDate);
+    } else {
+        // Show last 12 months or since first transaction
+        endDate = new Date(today);
+        startDate = new Date(today);
+        startDate.setMonth(today.getMonth() - 11);
+        
+        if (firstDate > startDate) {
+            startDate = new Date(firstDate);
+        }
+        
+        dateLabels = getMonthlyLabels(startDate, endDate);
+    }
+
+    // Calculate cumulative data for each period
+    dateLabels.forEach(period => {
+        labels.push(period.label);
+        
+        // Get transactions up to this period
+        const transactionsUpToPeriod = allTransactions.filter(t => {
+            const transactionDate = new Date(t.date);
+            return transactionDate <= period.endDate;
+        });
+        
+        // Calculate cumulative revenue
+        const cumulativeRevenue = transactionsUpToPeriod
+            .filter(t => t.type === 'cash')
+            .reduce((sum, t) => sum + t.amount, 0);
+        
+        // Calculate outstanding borrowed (borrowed - paid)
+        const outstandingBorrowed = transactionsUpToPeriod
+            .filter(t => t.type === 'borrowed' && !t.paid)
+            .reduce((sum, t) => sum + t.amount, 0);
+        
+        revenueData.push(cumulativeRevenue);
+        borrowedData.push(outstandingBorrowed);
+    });
+
+    performanceChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Cumulative Revenue',
+                data: revenueData,
+                borderColor: '#22C55E',
+                backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                tension: 0.4,
+                fill: true
+            }, {
+                label: 'Outstanding Borrowed',
+                data: borrowedData,
+                borderColor: '#EF4444',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '₱' + value.toLocaleString();
                         }
                     }
                 }
-            });
+            },
+            plugins: {
+                legend: {
+                    position: 'top'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ': ₱' + context.parsed.y.toLocaleString();
+                        }
+                    }
+                }
+            }
         }
+    });
+}
 
         function updatePlaceChart() {
             if (!currentPlace) return;
@@ -986,8 +1197,8 @@ window.makePayment = makePayment; // Make globally accessible
                 .filter(t => t.type === 'cash')
                 .reduce((sum, t) => sum + t.amount, 0);
             const borrowed = transactions
-                .filter(t => t.type === 'borrowed')
-                .reduce((sum, t) => sum + t.amount, 0);
+    .filter(t => t.type === 'borrowed' && !t.paid)
+    .reduce((sum, t) => sum + t.amount, 0);
 
             placeChart = new Chart(ctx, {
                 type: 'bar',
@@ -1052,6 +1263,7 @@ window.makePayment = makePayment; // Make globally accessible
         window.showPlace = showPlace;
         window.showDashboard = showDashboard;
         window.hideNotification = hideNotification;
+        window.markAsPaid = markAsPaid;
 
         // Performance period buttons event listener
         document.addEventListener('DOMContentLoaded', function() {
@@ -1065,6 +1277,35 @@ window.makePayment = makePayment; // Make globally accessible
                 });
             });
         });
+        function markAsPaid(transactionId) {
+    if (!currentPlace) return;
+    
+    const transaction = currentPlace.transactions.find(t => t.id === transactionId);
+    if (!transaction) {
+        showNotification('Transaction not found! 🚫');
+        return;
+    }
+    
+    if (transaction.type !== 'borrowed') {
+        showNotification('Only borrowed transactions can be marked as paid! 🚫');
+        return;
+    }
+    
+    if (transaction.paid) {
+        showNotification('Transaction is already marked as paid! ✅');
+        return;
+    }
+    
+    transaction.paid = true;
+    transaction.paidDate = new Date();
+    
+    showNotification(`"${transaction.name}" marked as paid! ✅`);
+    updateTransactionsList();
+    updateStats();
+    updateCharts();
+    updatePlaceChart();
+    saveData();
+}
     </script>
 </body>
 </html>
